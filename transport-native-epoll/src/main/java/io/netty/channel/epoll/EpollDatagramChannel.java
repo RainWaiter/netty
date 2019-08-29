@@ -565,13 +565,13 @@ public final class EpollDatagramChannel extends AbstractEpollChannel implements 
         NativeDatagramPacketArray array = cleanDatagramPacketArray();
 
         // RecyclableArray to reduce allocations
-        RecyclableArrayList buffers = RecyclableArrayList.newInstance();
-        allocHandle.allocateScattering(allocator, (List) buffers);
+        RecyclableArrayList data = RecyclableArrayList.newInstance();
+        allocHandle.allocateScattering(allocator, (List) data);
         try {
-            int numComponents = buffers.size();
+            int numComponents = data.size();
             int attemptedBytes = 0;
             for (int i = 0; i < numComponents; i++) {
-                ByteBuf buffer = (ByteBuf) buffers.get(i);
+                ByteBuf buffer = (ByteBuf) data.get(i);
                 if (!array.addWritable(buffer)) {
                     // Not enough space...
                     break;
@@ -592,32 +592,32 @@ public final class EpollDatagramChannel extends AbstractEpollChannel implements 
             // before we call fireChannelRead(...). This is because the user may call flush()
             // in a channelRead(...) method and so may re-use the NativeDatagramPacketArray again.
             for (int i = 0; i < received; i++) {
-                ByteBuf buf = (ByteBuf) buffers.get(i);
+                ByteBuf buf = (ByteBuf) data.get(i);
                 DatagramPacket packet = packets[i].newDatagramPacket(buf, local);
                 bytesRead += packet.content().readableBytes();
-                buffers.set(i,  packet);
+                data.set(i,  packet);
             }
 
             // release the rest of the buffers that were not used and also ensure we not release them again later on.
             for (int i = received; i < numComponents; i++) {
-                ((ByteBuf) buffers.set(i, Unpooled.EMPTY_BUFFER)).release();
+                ((ByteBuf) data.set(i, Unpooled.EMPTY_BUFFER)).release();
             }
 
             allocHandle.lastBytesRead(bytesRead);
             allocHandle.incMessagesRead(received);
 
             for (int i = 0; i < received; i++) {
-                pipeline().fireChannelRead(buffers.get(i));
+                pipeline().fireChannelRead(data.set(i, Unpooled.EMPTY_BUFFER));
             }
-            buffers.recycle();
-            buffers = null;
+            data.recycle();
+            data = null;
             return true;
         } finally {
-            if (buffers != null) {
-                for (int i = 0; i < buffers.size(); i++) {
-                    ReferenceCountUtil.release(buffers.get(i));
+            if (data != null) {
+                for (int i = 0; i < data.size(); i++) {
+                    ReferenceCountUtil.release(data.get(i));
                 }
-                buffers.recycle();
+                data.recycle();
             }
         }
     }
