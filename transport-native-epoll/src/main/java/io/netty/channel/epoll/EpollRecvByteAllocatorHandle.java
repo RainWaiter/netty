@@ -22,9 +22,7 @@ import io.netty.channel.RecvByteBufAllocator.ExtendedHandle;
 import io.netty.channel.unix.PreferredDirectByteBufAllocator;
 import io.netty.util.UncheckedBooleanSupplier;
 
-import java.util.List;
-
-class EpollRecvByteAllocatorHandle extends DelegatingHandle implements ScatteringHandle {
+class EpollRecvByteAllocatorHandle extends DelegatingHandle implements ExtendedHandle {
     private final PreferredDirectByteBufAllocator preferredDirectByteBufAllocator =
             new PreferredDirectByteBufAllocator();
     private final UncheckedBooleanSupplier defaultMaybeMoreDataSupplier = new UncheckedBooleanSupplier() {
@@ -35,11 +33,9 @@ class EpollRecvByteAllocatorHandle extends DelegatingHandle implements Scatterin
     };
     private boolean isEdgeTriggered;
     private boolean receivedRdHup;
-    private final boolean isScattering;
 
     EpollRecvByteAllocatorHandle(ExtendedHandle handle) {
         super(handle);
-        isScattering = handle instanceof ScatteringHandle;
     }
 
     final void receivedRdHup() {
@@ -88,19 +84,5 @@ class EpollRecvByteAllocatorHandle extends DelegatingHandle implements Scatterin
     public final boolean continueReading() {
         // We must override the supplier which determines if there maybe more data to read.
         return continueReading(defaultMaybeMoreDataSupplier);
-    }
-
-    final boolean isDelegateScattering() {
-        return isScattering;
-    }
-
-    @Override
-    public void allocateScattering(ByteBufAllocator alloc, List<ByteBuf> buffers) {
-        if (isScattering) {
-            preferredDirectByteBufAllocator.updateAllocator(alloc);
-            ((ScatteringHandle) delegate()).allocateScattering(alloc, buffers);
-        } else {
-            buffers.add(allocate(alloc));
-        }
     }
 }

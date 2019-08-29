@@ -16,6 +16,7 @@
 package io.netty.channel.epoll;
 
 import io.netty.bootstrap.Bootstrap;
+import io.netty.channel.AdaptiveRecvByteBufAllocator;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
@@ -25,7 +26,6 @@ import io.netty.channel.socket.DatagramPacket;
 import io.netty.testsuite.transport.TestsuitePermutation;
 import io.netty.testsuite.transport.socket.AbstractDatagramTest;
 import io.netty.util.internal.PlatformDependent;
-import net.bytebuddy.implementation.bytecode.Throw;
 import org.junit.Test;
 
 import java.net.InetSocketAddress;
@@ -48,36 +48,30 @@ public class EpollDatagramScatteringReadTest extends AbstractDatagramTest  {
     }
 
     @Test
-    public void testScatteringReadWithFixed() throws Throwable {
+    public void testScatteringReadPartial() throws Throwable {
         run();
     }
 
-    public void testScatteringReadWithFixed(Bootstrap sb, Bootstrap cb) throws Throwable {
-        testScatteringRead(sb, cb, false, true);
-        testScatteringRead(sb, cb, true, true);
+    public void testScatteringReadPartial(Bootstrap sb, Bootstrap cb) throws Throwable {
+        testScatteringRead(sb, cb, true);
     }
 
     @Test
-    public void testScatteringReadWithAdaptive() throws Throwable {
+    public void testScatteringRead() throws Throwable {
         run();
     }
 
-    public void testScatteringReadWithAdaptive(Bootstrap sb, Bootstrap cb) throws Throwable {
-        testScatteringRead(sb, cb, false, false);
-        testScatteringRead(sb, cb, true, false);
+    public void testScatteringRead(Bootstrap sb, Bootstrap cb) throws Throwable {
+        testScatteringRead(sb, cb, false);
     }
 
-    private void testScatteringRead(Bootstrap sb, Bootstrap cb, boolean partial, boolean fixed) throws Throwable {
+    private void testScatteringRead(Bootstrap sb, Bootstrap cb, boolean partial) throws Throwable {
         int packetSize = 512;
         int numPackets = 4;
-        if (fixed) {
-            sb.option(ChannelOption.RCVBUF_ALLOCATOR, new ScatteringFixedRecvByteBufAllocator(
-                    packetSize, partial ? numPackets / 2 : numPackets));
-        } else {
-            // Start with enough space to read two packets with one syscall.
-            sb.option(ChannelOption.RCVBUF_ALLOCATOR, new ScatteringAdaptiveRecvByteBufAllocator(
-                    packetSize, packetSize * (partial ? numPackets / 2 : numPackets), 64 * 1024, packetSize));
-        }
+        sb.option(ChannelOption.RCVBUF_ALLOCATOR, new AdaptiveRecvByteBufAllocator(
+                packetSize, packetSize * (partial ? numPackets / 2 : numPackets), 64 * 1024));
+        sb.option(EpollChannelOption.MAX_DATAGRAM_SIZE, packetSize);
+
         Channel sc = null;
         Channel cc = null;
 

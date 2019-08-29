@@ -46,7 +46,6 @@ import java.net.NetworkInterface;
 import java.net.PortUnreachableException;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
-import java.util.List;
 
 import static io.netty.channel.epoll.LinuxSocket.newSocketDgram;
 
@@ -390,7 +389,7 @@ public final class EpollDatagramChannel extends AbstractEpollChannel implements 
             }
         } else if (data.nioBufferCount() > 1) {
             IovArray array = ((EpollEventLoop) eventLoop()).cleanIovArray();
-            array.addReadable(data);
+            array.add(data, data.readerIndex(), data.readableBytes());
             int cnt = array.count();
             assert cnt != 0;
 
@@ -493,14 +492,22 @@ public final class EpollDatagramChannel extends AbstractEpollChannel implements 
                 try {
                     boolean connected = isConnected();
                     do {
+                        ByteBuf byteBuf = allocHandle.allocate(allocator);
                         final boolean read;
                         if (connected) {
-                            read = connectedRead(allocHandle, allocator);
-                        } else if (allocHandle.isDelegateScattering()) {
-                            // Try to use scattering reads via recvmmsg(...) syscall.
-                            read = scatteringRead(allocHandle, allocator);
+                            read = connectedRead(allocHandle, byteBuf);
                         } else {
-                            read = read(allocHandle, allocator);
+                            int writerIndex = byteBuf.writerIndex();
+                            int size = byteBuf.capacity() - writerIndex;
+                            int datagramSize = config().getMaxDatagramPacketSize();
+                            int numDatagram = datagramSize == 0 ? 1 : size / datagramSize;
+
+                            if (numDatagram <= 1) {
+                                read = read(allocHandle, byteBuf);
+                            } else {
+                                // Try to use scattering reads via recvmmsg(...) syscall.
+                                read = scatteringRead(allocHandle, byteBuf, datagramSize, numDatagram);
+                            }
                         }
                         if (read) {
                             readPending = false;
@@ -524,9 +531,8 @@ public final class EpollDatagramChannel extends AbstractEpollChannel implements 
         }
     }
 
-    private boolean connectedRead(EpollRecvByteAllocatorHandle allocHandle, ByteBufAllocator allocator)
+    private boolean connectedRead(EpollRecvByteAllocatorHandle allocHandle, ByteBuf byteBuf)
             throws Exception {
-        ByteBuf byteBuf = allocHandle.allocate(allocator);
         try {
             allocHandle.attemptedBytesRead(byteBuf.writableBytes());
 
@@ -558,27 +564,20 @@ public final class EpollDatagramChannel extends AbstractEpollChannel implements 
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private boolean scatteringRead(EpollRecvByteAllocatorHandle allocHandle, ByteBufAllocator allocator)
-            throws IOException {
-        // Try to use gathering writes via recvmmsg(...) syscall.
-        NativeDatagramPacketArray array = cleanDatagramPacketArray();
-
-        // RecyclableArray to reduce allocations
-        RecyclableArrayList data = RecyclableArrayList.newInstance();
-        allocHandle.allocateScattering(allocator, (List) data);
+    private boolean scatteringRead(EpollRecvByteAllocatorHandle allocHandle,
+            ByteBuf byteBuf, int datagramSize, int numDatagram) throws IOException {
+        RecyclableArrayList bufferPackets = null;
         try {
-            int numComponents = data.size();
-            int attemptedBytes = 0;
-            for (int i = 0; i < numComponents; i++) {
-                ByteBuf buffer = (ByteBuf) data.get(i);
-                if (!array.addWritable(buffer)) {
-                    // Not enough space...
+            int offset = byteBuf.writerIndex();
+            NativeDatagramPacketArray array = cleanDatagramPacketArray();
+
+            for (int i = 0; i < numDatagram;  i++, offset += datagramSize) {
+                if (!array.addWritable(byteBuf, offset, datagramSize)) {
                     break;
                 }
-                attemptedBytes += buffer.writableBytes();
             }
-            allocHandle.attemptedBytesRead(attemptedBytes);
+
+            allocHandle.attemptedBytesRead(offset - byteBuf.writerIndex());
 
             NativeDatagramPacketArray.NativeDatagramPacket[] packets = array.packets();
             int received = socket.recvmmsg(packets, 0, array.count());
@@ -586,44 +585,52 @@ public final class EpollDatagramChannel extends AbstractEpollChannel implements 
                 allocHandle.lastBytesRead(-1);
                 return false;
             }
+            byteBuf.writerIndex(received * datagramSize);
             InetSocketAddress local = localAddress();
+            if (received == 1) {
+                // Single packet fast-path
+                DatagramPacket packet = packets[0].newDatagramPacket(byteBuf, local);
+                allocHandle.lastBytesRead(packet.content().readableBytes());
+                allocHandle.incMessagesRead(1);
+                pipeline().fireChannelRead(packet);
+                byteBuf = null;
+                return true;
+            }
+
             int bytesRead = 0;
             // Its important that we process all received data out of the NativeDatagramPacketArray
             // before we call fireChannelRead(...). This is because the user may call flush()
             // in a channelRead(...) method and so may re-use the NativeDatagramPacketArray again.
+            bufferPackets = RecyclableArrayList.newInstance();
             for (int i = 0; i < received; i++) {
-                ByteBuf buf = (ByteBuf) data.get(i);
-                DatagramPacket packet = packets[i].newDatagramPacket(buf, local);
+                DatagramPacket packet = packets[i].newDatagramPacket(byteBuf.readRetainedSlice(datagramSize), local);
                 bytesRead += packet.content().readableBytes();
-                data.set(i,  packet);
-            }
-
-            // release the rest of the buffers that were not used and also ensure we not release them again later on.
-            for (int i = received; i < numComponents; i++) {
-                ((ByteBuf) data.set(i, Unpooled.EMPTY_BUFFER)).release();
+                bufferPackets.add(packet);
             }
 
             allocHandle.lastBytesRead(bytesRead);
             allocHandle.incMessagesRead(received);
 
             for (int i = 0; i < received; i++) {
-                pipeline().fireChannelRead(data.set(i, Unpooled.EMPTY_BUFFER));
+                pipeline().fireChannelRead(bufferPackets.set(i, Unpooled.EMPTY_BUFFER));
             }
-            data.recycle();
-            data = null;
+            bufferPackets.recycle();
+            bufferPackets = null;
             return true;
         } finally {
-            if (data != null) {
-                for (int i = 0; i < data.size(); i++) {
-                    ReferenceCountUtil.release(data.get(i));
+            if (byteBuf != null) {
+                byteBuf.release();
+            }
+            if (bufferPackets != null) {
+                for (int i = 0; i < bufferPackets.size(); i++) {
+                    ReferenceCountUtil.release(bufferPackets.get(i));
                 }
-                data.recycle();
+                bufferPackets.recycle();
             }
         }
     }
 
-    private boolean read(EpollRecvByteAllocatorHandle allocHandle, ByteBufAllocator allocator) throws IOException {
-        ByteBuf byteBuf = allocHandle.allocate(allocator);
+    private boolean read(EpollRecvByteAllocatorHandle allocHandle, ByteBuf byteBuf) throws IOException {
         try {
             allocHandle.attemptedBytesRead(byteBuf.writableBytes());
 

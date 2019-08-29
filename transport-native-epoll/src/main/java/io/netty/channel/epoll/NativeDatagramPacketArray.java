@@ -19,6 +19,8 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelOutboundBuffer;
 import io.netty.channel.socket.DatagramPacket;
 import io.netty.channel.unix.IovArray;
+import io.netty.channel.unix.Limits;
+
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -46,53 +48,32 @@ final class NativeDatagramPacketArray implements ChannelOutboundBuffer.MessagePr
         }
     }
 
-    /**
-     * Try to add the given {@link DatagramPacket}. Returns {@code true} on success,
-     * {@code false} otherwise.
-     */
     private boolean addReadable(DatagramPacket packet) {
-        if (count == packets.length) {
-            // We already filled up to UIO_MAX_IOV messages. This is the max allowed per sendmmsg(...) call, we will
-            // try again later.
-            return false;
-        }
-        ByteBuf content = packet.content();
-        int len = content.readableBytes();
-        if (len == 0) {
-            return true;
-        }
-        NativeDatagramPacket p = packets[count];
-        InetSocketAddress recipient = packet.recipient();
-
-        int offset = iovArray.count();
-        if (!iovArray.addReadable(content)) {
-            // Not enough space to hold the whole content, we will try again later.
-            return false;
-        }
-        p.init(iovArray.memoryAddress(offset), iovArray.count() - offset, recipient);
-
-        count++;
-        return true;
+        ByteBuf buf = packet.content();
+        return add0(buf, buf.readerIndex(), buf.readableBytes(), packet.recipient());
     }
 
-    boolean addWritable(ByteBuf content) {
+    boolean addWritable(ByteBuf buf, int index, int len) {
+        return add0(buf, index, len, null);
+    }
+
+    private boolean add0(ByteBuf buf, int index, int len, InetSocketAddress recipient) {
         if (count == packets.length) {
-            // We already filled up to UIO_MAX_IOV messages. This is the max allowed per recvmmsg(...) call, we will
-            // try again later.
+            // We already filled up to UIO_MAX_IOV messages. This is the max allowed per
+            // recvmmsg(...) / sendmmsg(...) call, we will try again later.
             return false;
         }
-        int len = content.writableBytes();
         if (len == 0) {
             return true;
         }
-        NativeDatagramPacket p = packets[count];
-
         int offset = iovArray.count();
-        if (!iovArray.addWritable(content)) {
+        if (offset == Limits.IOV_MAX || !iovArray.add(buf, index, len)) {
             // Not enough space to hold the whole content, we will try again later.
             return false;
         }
-        p.init(iovArray.memoryAddress(offset), iovArray.count() - offset);
+        NativeDatagramPacket p = packets[count];
+        p.init(iovArray.memoryAddress(offset), iovArray.count() - offset, recipient);
+
         count++;
         return true;
     }
@@ -141,28 +122,25 @@ final class NativeDatagramPacketArray implements ChannelOutboundBuffer.MessagePr
         private int port;
 
         private void init(long memoryAddress, int count, InetSocketAddress recipient) {
-            init(memoryAddress, count);
-
-            InetAddress address = recipient.getAddress();
-            if (address instanceof Inet6Address) {
-                System.arraycopy(address.getAddress(), 0, addr, 0, 16);
-                addrLen = 16;
-                scopeId = ((Inet6Address) address).getScopeId();
-            } else {
-                copyIpv4MappedIpv6Address(address.getAddress(), addr);
-                addrLen = 16;
-                scopeId = 0;
-            }
-            addrLen = addr.length;
-            port = recipient.getPort();
-        }
-
-        private void init(long memoryAddress, int count) {
             this.memoryAddress = memoryAddress;
             this.count = count;
-            this.scopeId = 0;
-            this.port = 0;
-            this.addrLen = 0;
+
+            if (recipient == null) {
+                this.scopeId = 0;
+                this.port = 0;
+                this.addrLen = 0;
+            } else {
+                InetAddress address = recipient.getAddress();
+                if (address instanceof Inet6Address) {
+                    System.arraycopy(address.getAddress(), 0, addr, 0, addr.length);
+                    scopeId = ((Inet6Address) address).getScopeId();
+                } else {
+                    copyIpv4MappedIpv6Address(address.getAddress(), addr);
+                    scopeId = 0;
+                }
+                addrLen = addr.length;
+                port = recipient.getPort();
+            }
         }
 
         DatagramPacket newDatagramPacket(ByteBuf buffer, InetSocketAddress localAddress) throws UnknownHostException {
@@ -172,7 +150,8 @@ final class NativeDatagramPacketArray implements ChannelOutboundBuffer.MessagePr
             } else {
                 address = InetAddress.getByAddress(addr);
             }
-            return new DatagramPacket(buffer.writerIndex(count), localAddress, new InetSocketAddress(address, port));
+            return new DatagramPacket(buffer.writerIndex(count),
+                    localAddress, new InetSocketAddress(address, port));
         }
     }
 }
