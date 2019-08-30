@@ -497,10 +497,8 @@ public final class EpollDatagramChannel extends AbstractEpollChannel implements 
                         if (connected) {
                             read = connectedRead(allocHandle, byteBuf);
                         } else {
-                            int writerIndex = byteBuf.writerIndex();
-                            int size = byteBuf.capacity() - writerIndex;
                             int datagramSize = config().getMaxDatagramPacketSize();
-                            int numDatagram = datagramSize == 0 ? 1 : size / datagramSize;
+                            int numDatagram = datagramSize == 0 ? 1 : byteBuf.writableBytes() / datagramSize;
 
                             if (numDatagram <= 1) {
                                 read = read(allocHandle, byteBuf);
@@ -590,25 +588,23 @@ public final class EpollDatagramChannel extends AbstractEpollChannel implements 
             if (received == 1) {
                 // Single packet fast-path
                 DatagramPacket packet = packets[0].newDatagramPacket(byteBuf, local);
-                allocHandle.lastBytesRead(packet.content().readableBytes());
+                allocHandle.lastBytesRead(datagramSize);
                 allocHandle.incMessagesRead(1);
                 pipeline().fireChannelRead(packet);
                 byteBuf = null;
                 return true;
             }
 
-            int bytesRead = 0;
             // Its important that we process all received data out of the NativeDatagramPacketArray
             // before we call fireChannelRead(...). This is because the user may call flush()
             // in a channelRead(...) method and so may re-use the NativeDatagramPacketArray again.
             bufferPackets = RecyclableArrayList.newInstance();
             for (int i = 0; i < received; i++) {
                 DatagramPacket packet = packets[i].newDatagramPacket(byteBuf.readRetainedSlice(datagramSize), local);
-                bytesRead += packet.content().readableBytes();
                 bufferPackets.add(packet);
             }
 
-            allocHandle.lastBytesRead(bytesRead);
+            allocHandle.lastBytesRead(datagramSize * received);
             allocHandle.incMessagesRead(received);
 
             for (int i = 0; i < received; i++) {
