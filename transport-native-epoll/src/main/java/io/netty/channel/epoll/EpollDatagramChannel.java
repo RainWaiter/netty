@@ -501,7 +501,7 @@ public final class EpollDatagramChannel extends AbstractEpollChannel implements 
                             int numDatagram = datagramSize == 0 ? 1 : byteBuf.writableBytes() / datagramSize;
 
                             if (numDatagram <= 1) {
-                                read = read(allocHandle, byteBuf);
+                                read = read(allocHandle, byteBuf, datagramSize);
                             } else {
                                 // Try to use scattering reads via recvmmsg(...) syscall.
                                 read = scatteringRead(allocHandle, byteBuf, datagramSize, numDatagram);
@@ -583,7 +583,8 @@ public final class EpollDatagramChannel extends AbstractEpollChannel implements 
                 allocHandle.lastBytesRead(-1);
                 return false;
             }
-            byteBuf.writerIndex(received * datagramSize);
+            int bytesReceived = received * datagramSize;
+            byteBuf.writerIndex(bytesReceived);
             InetSocketAddress local = localAddress();
             if (received == 1) {
                 // Single packet fast-path
@@ -604,7 +605,7 @@ public final class EpollDatagramChannel extends AbstractEpollChannel implements 
                 bufferPackets.add(packet);
             }
 
-            allocHandle.lastBytesRead(datagramSize * received);
+            allocHandle.lastBytesRead(bytesReceived);
             allocHandle.incMessagesRead(received);
 
             for (int i = 0; i < received; i++) {
@@ -626,7 +627,8 @@ public final class EpollDatagramChannel extends AbstractEpollChannel implements 
         }
     }
 
-    private boolean read(EpollRecvByteAllocatorHandle allocHandle, ByteBuf byteBuf) throws IOException {
+    private boolean read(EpollRecvByteAllocatorHandle allocHandle, ByteBuf byteBuf, int maxDatagramPacketSize)
+            throws IOException {
         try {
             allocHandle.attemptedBytesRead(byteBuf.writableBytes());
 
@@ -649,7 +651,8 @@ public final class EpollDatagramChannel extends AbstractEpollChannel implements 
             if (localAddress == null) {
                 localAddress = localAddress();
             }
-            allocHandle.lastBytesRead(remoteAddress.receivedAmount());
+            allocHandle.lastBytesRead(maxDatagramPacketSize <= 0 ?
+                    remoteAddress.receivedAmount() : maxDatagramPacketSize);
             byteBuf.writerIndex(byteBuf.writerIndex() + allocHandle.lastBytesRead());
             allocHandle.incMessagesRead(1);
 
