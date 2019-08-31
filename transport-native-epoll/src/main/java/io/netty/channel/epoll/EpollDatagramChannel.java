@@ -630,16 +630,17 @@ public final class EpollDatagramChannel extends AbstractEpollChannel implements 
     private boolean read(EpollRecvByteAllocatorHandle allocHandle, ByteBuf byteBuf, int maxDatagramPacketSize)
             throws IOException {
         try {
-            allocHandle.attemptedBytesRead(byteBuf.writableBytes());
-
+            int writable = maxDatagramPacketSize != 0 ? Math.min(byteBuf.writableBytes(), maxDatagramPacketSize)
+                    : byteBuf.writableBytes();
+            allocHandle.attemptedBytesRead(writable);
+            int writerIndex = byteBuf.writerIndex();
             final DatagramSocketAddress remoteAddress;
             if (byteBuf.hasMemoryAddress()) {
                 // has a memory address so use optimized call
                 remoteAddress = socket.recvFromAddress(
-                        byteBuf.memoryAddress(), byteBuf.writerIndex(), byteBuf.capacity());
+                        byteBuf.memoryAddress(), writerIndex, writerIndex + writable);
             } else {
-                ByteBuffer nioData = byteBuf.internalNioBuffer(
-                        byteBuf.writerIndex(), byteBuf.writableBytes());
+                ByteBuffer nioData = byteBuf.internalNioBuffer(writerIndex, writable);
                 remoteAddress = socket.recvFrom(nioData, nioData.position(), nioData.limit());
             }
 
