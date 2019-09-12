@@ -1,64 +1,65 @@
 # Netty Project
 
-Netty is an asynchronous event-driven network application framework for rapid development of maintainable high performance protocol servers & clients.
+### 在IDea中install
 
-## Links
+选择maven版本为3.3.9 （IDea自带的maven去安装，可能有点问题）
 
-* [Web Site](https://netty.io/)
-* [Downloads](https://netty.io/downloads.html)
-* [Documentation](https://netty.io/wiki/)
-* [@netty_project](https://twitter.com/netty_project)
+命令：
+````
+install -rf :netty-codec-stomp -Dcheckstyle.skip=true -Dmaven.test.skip=true -X
+````
 
-## How to build
-
-For the detailed information about building and developing Netty, please visit [the developer guide](https://netty.io/wiki/developer-guide.html).  This page only gives very basic information.
-
-You require the following to build Netty:
-
-* Latest stable [Oracle JDK 7](http://www.oracle.com/technetwork/java/)
-* Latest stable [Apache Maven](http://maven.apache.org/)
-* If you are on Linux, you need [additional development packages](https://netty.io/wiki/native-transports.html) installed on your system, because you'll build the native transport.
-
-Note that this is build-time requirement.  JDK 5 (for 3.x) or 6 (for 4.0+) is enough to run your Netty-based application.
-
-## Branches to look
-
-Development of all versions takes place in each branch whose name is identical to `<majorVersion>.<minorVersion>`.  For example, the development of 3.9 and 4.0 resides in [the branch '3.9'](https://github.com/netty/netty/tree/3.9) and [the branch '4.0'](https://github.com/netty/netty/tree/4.0) respectively.
-
-## Usage with JDK 9
-
-Netty can be used in modular JDK9 applications as a collection of automatic modules. The module names follow the
-reverse-DNS style, and are derived from subproject names rather than root packages due to historical reasons. They
-are listed below:
-
- * `io.netty.all`
- * `io.netty.buffer`
- * `io.netty.codec`
- * `io.netty.codec.dns`
- * `io.netty.codec.haproxy`
- * `io.netty.codec.http`
- * `io.netty.codec.http2`
- * `io.netty.codec.memcache`
- * `io.netty.codec.mqtt`
- * `io.netty.codec.redis`
- * `io.netty.codec.smtp`
- * `io.netty.codec.socks`
- * `io.netty.codec.stomp`
- * `io.netty.codec.xml`
- * `io.netty.common`
- * `io.netty.handler`
- * `io.netty.handler.proxy`
- * `io.netty.resolver`
- * `io.netty.resolver.dns`
- * `io.netty.transport`
- * `io.netty.transport.epoll` (`native` omitted - reserved keyword in Java)
- * `io.netty.transport.kqueue` (`native` omitted - reserved keyword in Java)
- * `io.netty.transport.unix.common` (`native` omitted - reserved keyword in Java)
- * `io.netty.transport.rxtx`
- * `io.netty.transport.sctp`
- * `io.netty.transport.udt`
+-rf :netty-codec-stomp 为从哪个项目开始执行，会跳过该项目之前的项目（通常是前面的项目已经成功install，需要跳过前面的项目）
 
 
+### 在IDea中install出现的问题
+<li> 出现类似oldVersion字样的问题
+````
+[ERROR] Failed to execute goal com.github.siom79.japicmp:japicmp-maven-plugin:0.9.2:cmp (check-api-compatibility-for-semantic-versioning) on project foo-api: Please provide at least one old version. -> [Help 1]
+````
 
-Automatic modules do not provide any means to declare dependencies, so you need to list each used module separately
-in your `module-info` file.
+解决办法：
+
+参考：https://github.com/siom79/japicmp/issues/153
+
+在pom.xml中找到指定的plugin，新增参数标签：
+````
+<ignoreMissingOldVersion>true</ignoreMissingOldVersion>
+````
+
+修改结果如下：
+
+````
+<plugin>
+    <groupId>com.github.siom79.japicmp</groupId>
+    <artifactId>japicmp-maven-plugin</artifactId>
+    <version>0.13.1</version>
+    <configuration>
+      <parameter>
+        <breakBuildOnBinaryIncompatibleModifications>true</breakBuildOnBinaryIncompatibleModifications>
+        <breakBuildOnSourceIncompatibleModifications>true</breakBuildOnSourceIncompatibleModifications>
+        <oldVersionPattern>\d+\.\d+\.\d+\.Final</oldVersionPattern>
+        <ignoreMissingClassesByRegularExpressions>
+          <!-- ignore everything which is not part of netty itself as the plugin can not handle optional dependencies -->
+          <ignoreMissingClassesByRegularExpression>^(?!io\.netty\.).*</ignoreMissingClassesByRegularExpression>
+          <ignoreMissingClassesByRegularExpression>^io\.netty\.internal\.tcnative\..*</ignoreMissingClassesByRegularExpression>
+        </ignoreMissingClassesByRegularExpressions>
+        <excludes>
+          <exclude>@io.netty.util.internal.UnstableApi</exclude>
+        </excludes>
+        <ignoreMissingOldVersion>true</ignoreMissingOldVersion>
+      </parameter>
+      <skip>${skipJapicmp}</skip>
+    </configuration>
+    <executions>
+      <execution>
+        <phase>verify</phase>
+        <goals>
+          <goal>cmp</goal>
+        </goals>
+      </execution>
+    </executions>
+</plugin>
+````
+
+

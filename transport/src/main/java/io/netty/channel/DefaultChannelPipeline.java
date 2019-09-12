@@ -15,6 +15,7 @@
  */
 package io.netty.channel;
 
+import com.ly.nettydemo.util.LogUtilDemo;
 import io.netty.channel.Channel.Unsafe;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.ResourceLeakDetector;
@@ -201,29 +202,44 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         synchronized (this) {
             checkMultiplicity(handler);
 
+            // new 一个AbstractChannelHandlerContext （ DefaultChannelHandlerContext ）
             newCtx = newContext(group, filterName(name, handler), handler);
 
+            // 新节点加入到last
             addLast0(newCtx);
 
+            /*
+            * 如果 registered 为false 代表当前的Channel还没有注册到一个线程EventLoop上（下面的executor就会为null），
+            * 我们现在加入了一个Context到当前Pipeline中，并新增一个task，这个task会当Channel注册到EventLoop上面之后，
+            * 调用 ChannelHandler.handlerAdded(...) 来通知 Context（也就是通知对应的Handler）
+            * */
             // If the registered is false it means that the channel was not registered on an eventLoop yet.
             // In this case we add the context to the pipeline and add a task that will call
             // ChannelHandler.handlerAdded(...) once the channel is registered.
             if (!registered) {
+                // 新Context设置为挂起状态
                 newCtx.setAddPending();
+                // 新Context加入到回调链的最后--等待回调
                 callHandlerCallbackLater(newCtx, true);
                 return this;
             }
 
+            // 执行新Context中的Handler入队事件 --- handlerAdded()  异步触发
             EventExecutor executor = newCtx.executor();
             if (!executor.inEventLoop()) {
                 callHandlerAddedInEventLoop(newCtx, executor);
                 return this;
             }
         }
+        // 执行新Context中的Handler入队事件 --- handlerAdded()  同步触发
         callHandlerAdded0(newCtx);
         return this;
     }
 
+    /**
+     * 节点加入到链表后面（ tail的前面节点 ）
+     * @param newCtx 节点
+     */
     private void addLast0(AbstractChannelHandlerContext newCtx) {
         AbstractChannelHandlerContext prev = tail.prev;
         newCtx.prev = prev;
@@ -791,11 +807,38 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     /**
      * Returns the {@link String} representation of this pipeline.
      */
-    @Override
-    public final String toString() {
+//    @Override
+//    public final String toString() {
+//        StringBuilder buf = new StringBuilder()
+//            .append(StringUtil.simpleClassName(this))
+//            .append('{');
+//        AbstractChannelHandlerContext ctx = head.next;
+//        for (;;) {
+//            if (ctx == tail) {
+//                break;
+//            }
+//
+//            buf.append('(')
+//               .append(ctx.name())
+//               .append(" = ")
+//               .append(ctx.handler().getClass().getName())
+//               .append(')');
+//
+//            ctx = ctx.next;
+//            if (ctx == tail) {
+//                break;
+//            }
+//
+//            buf.append(", ");
+//        }
+//        buf.append('}');
+//        return buf.toString();
+//    }
+
+    public final String buildToString() {
         StringBuilder buf = new StringBuilder()
-            .append(StringUtil.simpleClassName(this))
-            .append('{');
+                .append(StringUtil.simpleClassName(this))
+                .append('{');
         AbstractChannelHandlerContext ctx = head.next;
         for (;;) {
             if (ctx == tail) {
@@ -803,10 +846,12 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             }
 
             buf.append('(')
-               .append(ctx.name())
-               .append(" = ")
-               .append(ctx.handler().getClass().getName())
-               .append(')');
+                    .append(ctx).append("=>")
+                    .append(ctx.name())
+                    .append(" = ")
+                    .append(ctx.handler()).append("=>")
+                    .append(ctx.handler().getClass().getName())
+                    .append(')');
 
             ctx = ctx.next;
             if (ctx == tail) {
@@ -903,12 +948,14 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     @Override
     public final ChannelPipeline fireChannelActive() {
+        LogUtilDemo.log("fireChannelActive.head=>" + head, this + ":" + this.buildToString());
         AbstractChannelHandlerContext.invokeChannelActive(head);
         return this;
     }
 
     @Override
     public final ChannelPipeline fireChannelInactive() {
+        LogUtilDemo.log("fireChannelInactive.head=>" + head,  this + ":" + this.buildToString());
         AbstractChannelHandlerContext.invokeChannelInactive(head);
         return this;
     }
@@ -927,12 +974,14 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     @Override
     public final ChannelPipeline fireChannelRead(Object msg) {
+        LogUtilDemo.log("fireChannelRead.head=>" + head + ",msg=>" + msg, this + ":" + this.buildToString());
         AbstractChannelHandlerContext.invokeChannelRead(head, msg);
         return this;
     }
 
     @Override
     public final ChannelPipeline fireChannelReadComplete() {
+        LogUtilDemo.log("fireChannelReadComplete.head=>" + head ,  this + ":" + this.buildToString());
         AbstractChannelHandlerContext.invokeChannelReadComplete(head);
         return this;
     }
@@ -1105,6 +1154,9 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         }
     }
 
+    /**
+    * 执行“挂起链”中所有的Handler的handlerAdded事件
+    * */
     private void callHandlerAddedForAllHandlers() {
         final PendingHandlerCallback pendingHandlerCallbackHead;
         synchronized (this) {
@@ -1388,6 +1440,9 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             ctx.fireExceptionCaught(cause);
         }
 
+        /**
+         * ChannelHandlerContext中的Channel 成功注册到EventLoop中
+         * */
         @Override
         public void channelRegistered(ChannelHandlerContext ctx) {
             invokeHandlerAddedIfNeeded();

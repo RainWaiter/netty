@@ -108,8 +108,19 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
             }
         }
 
+        /*
+        * 如何从EventLoop池中选择一个EventLoop线程
+        * 一般都是简单的循环
+        * 参见工厂类 {@link DefaultEventExecutorChooserFactory}
+        * */
         chooser = chooserFactory.newChooser(children);
 
+
+        /*
+        * 一个终止监听Listener
+        * 当EventLoop池中的EventLoop正常终止，则触发
+        * 当最后一个EventLoop终止时，设置 terminationFuture 为 Success
+        * */
         final FutureListener<Object> terminationListener = new FutureListener<Object>() {
             @Override
             public void operationComplete(Future<Object> future) throws Exception {
@@ -120,9 +131,15 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
         };
 
         for (EventExecutor e: children) {
+            /*
+            * EventExecutor ( EventLoop ) 注册“终止监听器”
+            * */
             e.terminationFuture().addListener(terminationListener);
         }
 
+        /*
+        * 一个只读的Children集合。
+        * */
         Set<EventExecutor> childrenSet = new LinkedHashSet<EventExecutor>(children.length);
         Collections.addAll(childrenSet, children);
         readonlyChildren = Collections.unmodifiableSet(childrenSet);

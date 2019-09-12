@@ -91,6 +91,15 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     /**
+     * 指定创建Channel实例的Class，
+     * 也可以使用channelFactory(ChannelFactory xx)方法指定一个工厂，来创建那些没有无参构造方法的Channel实现,
+     * 因为默认会以无参构造方法的形式创建Channel实例。
+     * <p>
+     * constructor = clazz.getConstructor();
+     * Channel channel  = constructor.newInstance()
+     * <br/><br/>
+     *
+     *
      * The {@link Class} which is used to create {@link Channel} instances from.
      * You either use this or {@link #channelFactory(io.netty.channel.ChannelFactory)} if your
      * {@link Channel} implementation has no no-args constructor.

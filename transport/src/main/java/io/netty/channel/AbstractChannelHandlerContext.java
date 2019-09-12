@@ -912,6 +912,11 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         return false;
     }
 
+    /**
+     * 获取匹配该掩码的第1个上下文处理类（链表循环-向后）--请求入站
+     * @param mask
+     * @return
+     */
     private AbstractChannelHandlerContext findContextInbound(int mask) {
         AbstractChannelHandlerContext ctx = this;
         do {
@@ -919,7 +924,11 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         } while ((ctx.executionMask & mask) == 0);
         return ctx;
     }
-
+    /**
+     * 获取匹配该掩码的第1个上下文处理类（链表循环-向前）--请求出站
+     * @param mask
+     * @return
+     */
     private AbstractChannelHandlerContext findContextOutbound(int mask) {
         AbstractChannelHandlerContext ctx = this;
         do {
@@ -1027,10 +1036,11 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         return '\'' + name + "' will handle the message from this point.";
     }
 
-    @Override
-    public String toString() {
-        return StringUtil.simpleClassName(ChannelHandlerContext.class) + '(' + name + ", " + channel() + ')';
-    }
+    // 为了打印对象地址，暂时屏蔽toString
+//    @Override
+//    public String toString() {
+//        return StringUtil.simpleClassName(ChannelHandlerContext.class) + '(' + name + ", " + channel() + ')';
+//    }
 
     abstract static class AbstractWriteTask implements Runnable {
 

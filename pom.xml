@@ -690,6 +690,12 @@
       <artifactId>logback-classic</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- demo for log-->
+    <dependency>
+      <groupId>com.ly</groupId>
+      <artifactId>demo-ly-log</artifactId>
+      <version>v1.0</version>
+    </dependency>
   </dependencies>
 
   <build>
@@ -719,6 +725,7 @@
             <excludes>
               <exclude>@io.netty.util.internal.UnstableApi</exclude>
             </excludes>
+            <ignoreMissingOldVersion>true</ignoreMissingOldVersion>
           </parameter>
           <skip>${skipJapicmp}</skip>
         </configuration>

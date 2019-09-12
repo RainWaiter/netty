@@ -69,6 +69,8 @@ final class ChannelHandlerMask {
             };
 
     /**
+     * 得到 某个 ChannelHandler 类型的掩码值
+     *
      * Return the {@code executionMask}.
      */
     static int mask(Class<? extends ChannelHandler> clazz) {
@@ -84,6 +86,9 @@ final class ChannelHandlerMask {
     }
 
     /**
+     * 计算某个 ChannelHandler 类型的掩码值
+     * 该掩码值用来决定该 ChannelHandler 类型能处理那些事件（读、写等）。
+     *
      * Calculate the {@code executionMask}.
      */
     private static int mask0(Class<? extends ChannelHandler> handlerType) {
@@ -161,9 +166,19 @@ final class ChannelHandlerMask {
         return mask;
     }
 
+    /**
+     * 查看当前class是否可以跳过
+     * @param handlerType  handler的class
+     * @param methodName   方法名称
+     * @param paramTypes   方法参数类型
+     * @return
+     * @throws Exception
+     */
     @SuppressWarnings("rawtypes")
     private static boolean isSkippable(
-            final Class<?> handlerType, final String methodName, final Class<?>... paramTypes) throws Exception {
+            final Class<?> handlerType,
+            final String methodName,
+            final Class<?>... paramTypes) throws Exception {
         return AccessController.doPrivileged(new PrivilegedExceptionAction<Boolean>() {
             @Override
             public Boolean run() throws Exception {
