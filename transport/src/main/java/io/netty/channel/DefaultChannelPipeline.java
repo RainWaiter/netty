@@ -1356,6 +1356,9 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
+            /**
+             * 当入站信息传递到 TailContext 还没有被处理，则 TailContext 节点负责销毁该Msg（进行释放）
+             */
             onUnhandledInboundMessage(ctx, msg);
         }
 
