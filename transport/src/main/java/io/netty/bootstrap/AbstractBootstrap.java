@@ -304,6 +304,8 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     final ChannelFuture initAndRegister() {
         Channel channel = null;
         try {
+            // 创建Channel 服务端就是 NioServerSocketChannel
+            // 创建Channel 客户端就是 NioSocketChannel
             channel = channelFactory.newChannel();
             init(channel);
         } catch (Throwable t) {

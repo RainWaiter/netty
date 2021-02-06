@@ -211,7 +211,6 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
         final Class<?> selectorImplClass = (Class<?>) maybeSelectorImplClass;
         final SelectedSelectionKeySet selectedKeySet = new SelectedSelectionKeySet();
-
         Object maybeException = AccessController.doPrivileged(new PrivilegedAction<Object>() {
             @Override
             public Object run() {
@@ -454,6 +453,9 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                         // fall-through to SELECT since the busy-wait is not supported with NIO
 
                     case SelectStrategy.SELECT:
+                        /*
+                        * 默认情况下，calculateStrategy()是：如果当前队列没有任务，则走到这里
+                         */
                         select(wakenUp.getAndSet(false));
 
                         // 'wakenUp.compareAndSet(false, true)' is always evaluated
@@ -500,6 +502,9 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
                 cancelledKeys = 0;
                 needsToSelectAgain = false;
+                // ===========执行完I/O事件，就执行任务队列=============
+                // ioRatio: 任务队列的分配的时间，占I/O处理时间的比例,100代表，任务队列执行时间没有限制（执行完才算数）
+                // 也就是可以让任务队列的执行时间可控，防止队列任务太大，执行时间太久，导致没办法执行I/O
                 final int ioRatio = this.ioRatio;
                 if (ioRatio == 100) {
                     try {
@@ -629,7 +634,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             // See https://github.com/netty/netty/issues/2363
             selectedKeys.keys[i] = null;
 
-            final Object a = k.attachment();
+            final Object a = k.attachment();  // 对于channel，是绑定到了selector的attach字段
 
             if (a instanceof AbstractNioChannel) {
                 processSelectedKey(k, (AbstractNioChannel) a);
@@ -685,18 +690,21 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 ops &= ~SelectionKey.OP_CONNECT;
                 k.interestOps(ops);
 
+                // connecton： 连接ok
                 unsafe.finishConnect();
             }
 
             // Process OP_WRITE first as we may be able to write some queued buffers and so free memory.
             if ((readyOps & SelectionKey.OP_WRITE) != 0) {
                 // Call forceFlush which will also take care of clear the OP_WRITE once there is nothing left to write
+                // forceFlush： 强制刷新写I/O
                 ch.unsafe().forceFlush();
             }
 
             // Also check for readOps of 0 to workaround possible JDK bug which may otherwise lead
             // to a spin loop
             if ((readyOps & (SelectionKey.OP_READ | SelectionKey.OP_ACCEPT)) != 0 || readyOps == 0) {
+                // read事件 || accept接收
                 unsafe.read();
             }
         } catch (CancelledKeyException ignored) {
@@ -794,6 +802,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         try {
             int selectCnt = 0;
             long currentTimeNanos = System.nanoTime();
+            // select超时的时间设置： 当前时间 + 定时任务队列中的定时Task的最小的延迟时间(定时任务队列是排过序的）
+            // 是为了保证队列中的定时任务能正常运行
             long selectDeadLineNanos = currentTimeNanos + delayNanos(currentTimeNanos);
 
             long normalizedDeadlineNanos = selectDeadLineNanos - initialNanoTime();
@@ -829,6 +839,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     // - waken up by user, or
                     // - the task queue has a pending task.
                     // - a scheduled task is ready for processing
+                    // select()有I/O事件处理 || 外界唤醒wakenUp || 任务队列有非定时任务 || 任务队列的定时任务到执行时间了
+                    // 跳出for  因为外面会执行任务队列的任务
                     break;
                 }
                 if (Thread.interrupted()) {
@@ -854,6 +866,9 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                         selectCnt >= SELECTOR_AUTO_REBUILD_THRESHOLD) {
                     // The code exists in an extra method to ensure the method is not too big to inline as this
                     // branch is not very likely to get hit very frequently.
+
+                    // 处理JDK的epoll的空转bug
+                    // 如果发现selectCnt大于一定的阈值，则重建Selector对象
                     selector = selectRebuildSelector(selectCnt);
                     selectCnt = 1;
                     break;

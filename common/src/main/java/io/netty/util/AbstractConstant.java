@@ -87,3 +87,4 @@ public abstract class AbstractConstant<T extends AbstractConstant<T>> implements
     }
 
 }
+

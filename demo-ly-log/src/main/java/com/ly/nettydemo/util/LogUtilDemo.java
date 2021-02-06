@@ -17,7 +17,8 @@ public class LogUtilDemo {
         System.out.println(
                 new SimpleDateFormat("MM-dd HH:mm:ss").format(new Date()) + " " +
                 "[" + Thread.currentThread().getName() + "] " +
-                that + " " +
+               // that + " " +
+                "[" + that.getClass().getSimpleName() + "] " +
                 content);
     }
 }

@@ -33,13 +33,18 @@ public class SimpleNettyServer {
         bootstrap.channel(NioServerSocketChannel.class)
                  .childHandler(new DemoServerChannelInitializer())
                  .option(ChannelOption.SO_BACKLOG, 1024)
+                 //.option(ChannelOption.AUTO_READ, false)  // auto_read为false 代表不读取数据, 但是客户端也连不上
                  .childOption(ChannelOption.SO_KEEPALIVE, false)
                  ;
 
         ChannelFuture f = bootstrap.bind(8888).sync();
-        System.out.println("sever on :" + 8888);
-        f.channel().closeFuture().sync();
 
+        //ChannelFuture f2 = bootstrap.bind(9999).sync();
+        System.out.println("sever on :" + 8888);
+        //System.out.println("sever on :" + 9999);
+
+        f.channel().closeFuture().sync();
+       // f2.channel().closeFuture().sync();
         boos.shutdownGracefully();
         work.shutdownGracefully();
     }
@@ -62,11 +67,11 @@ public class SimpleNettyServer {
             ch.pipeline().addLast(new DemoAsciiToUpperDecoder());
 
             // inbound
-            ch.pipeline().addLast(new DemoServerChannelHandlerB());
-            ch.pipeline().addLast(new DemoServerChannelHandlerA()); // 会被忽略
+            ch.pipeline().addLast(new DemoServerChannelHandlerForInboundB());
+            ch.pipeline().addLast(new DemoServerChannelHandlerForInboundA()); // 会被忽略
 
             // outbound
-            ch.pipeline().addLast(new DemoServerChannelHandlerC());
+            ch.pipeline().addLast(new DemoServerChannelHandlerForOutboundC());
         }
     }
 
@@ -75,7 +80,7 @@ public class SimpleNettyServer {
 
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-            LogUtilDemo.log("channelRead start", this);
+            LogUtilDemo.log("DemoAuthHandler.channelRead start", this);
 
             ByteBuf buf = (ByteBuf) msg;
             buf.markReaderIndex();
@@ -85,7 +90,7 @@ public class SimpleNettyServer {
             String str = new String(b);
             boolean authSuccess = "Y".equalsIgnoreCase(str);
 
-            LogUtilDemo.log("auth result=> " + authSuccess, this);
+            LogUtilDemo.log("auth result=> " + authSuccess+ ",str=>" + str, this);
 
             if( authSuccess ) {
                 // 验证成功
@@ -103,7 +108,7 @@ public class SimpleNettyServer {
 
         @Override
         public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
-            LogUtilDemo.log("channelReadComplete success", this);
+            LogUtilDemo.log("DemoAuthHandler.channelReadComplete", this);
         }
     }
 
@@ -134,7 +139,7 @@ public class SimpleNettyServer {
         }
     }
 
-    static class DemoServerChannelHandlerA extends SimpleChannelInboundHandler<Object> {
+    static class DemoServerChannelHandlerForInboundA extends SimpleChannelInboundHandler<Object> {
         @Override
         public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
             LogUtilDemo.log("channelReadComplete success", this);
@@ -169,7 +174,7 @@ public class SimpleNettyServer {
         }
     }
 
-    static class DemoServerChannelHandlerB extends SimpleChannelInboundHandler<Object> {
+    static class DemoServerChannelHandlerForInboundB extends SimpleChannelInboundHandler<Object> {
         @Override
         public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
             LogUtilDemo.log("channelReadComplete success", this);
@@ -180,6 +185,7 @@ public class SimpleNettyServer {
         @Override
         public void channelActive(ChannelHandlerContext ctx) throws Exception {
             LogUtilDemo.log("conn success", this);
+            //ctx.fireChannelActive(); // 继续传播该event
         }
 
         @Override
@@ -237,7 +243,7 @@ public class SimpleNettyServer {
         }
     }
 
-    static class DemoServerChannelHandlerC extends ChannelOutboundHandlerAdapter {
+    static class DemoServerChannelHandlerForOutboundC extends ChannelOutboundHandlerAdapter {
 
         @Override
         public void read(ChannelHandlerContext ctx) throws Exception {

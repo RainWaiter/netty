@@ -198,8 +198,8 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         @Override
         @SuppressWarnings("unchecked")
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
-            final Channel child = (Channel) msg;
 
+            final Channel child = (Channel) msg;
             // 为 NioSocketChannel 加上 Channelhandler
             child.pipeline().addLast(childHandler);
 
@@ -207,7 +207,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             setAttributes(child, childAttrs);
 
             try {
-                // NioSocketChannel 注册到 EventLoop
+                // NioSocketChannel 注册到 WorkerEventLoop
                 childGroup.register(child).addListener(new ChannelFutureListener() {
                     @Override
                     public void operationComplete(ChannelFuture future) throws Exception {

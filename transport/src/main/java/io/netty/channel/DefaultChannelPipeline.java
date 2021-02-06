@@ -948,14 +948,14 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     @Override
     public final ChannelPipeline fireChannelActive() {
-        LogUtilDemo.log("fireChannelActive.head=>" + head, this + ":" + this.buildToString());
+        LogUtilDemo.log("fireChannelActive.head=>" + head, this);
         AbstractChannelHandlerContext.invokeChannelActive(head);
         return this;
     }
 
     @Override
     public final ChannelPipeline fireChannelInactive() {
-        LogUtilDemo.log("fireChannelInactive.head=>" + head,  this + ":" + this.buildToString());
+        LogUtilDemo.log("fireChannelInactive.head=>" + head,  this);
         AbstractChannelHandlerContext.invokeChannelInactive(head);
         return this;
     }
@@ -974,14 +974,14 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     @Override
     public final ChannelPipeline fireChannelRead(Object msg) {
-        LogUtilDemo.log("fireChannelRead.head=>" + head + ",msg=>" + msg, this + ":" + this.buildToString());
+        LogUtilDemo.log("fireChannelRead.head=>" + head + ",msg=>" + msg, this);
         AbstractChannelHandlerContext.invokeChannelRead(head, msg);
         return this;
     }
 
     @Override
     public final ChannelPipeline fireChannelReadComplete() {
-        LogUtilDemo.log("fireChannelReadComplete.head=>" + head ,  this + ":" + this.buildToString());
+        LogUtilDemo.log("fireChannelReadComplete.head=>" + head ,  this);
         AbstractChannelHandlerContext.invokeChannelReadComplete(head);
         return this;
     }
@@ -1061,6 +1061,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     @Override
     public final ChannelPipeline read() {
+        // read() 从Tail尾部开始
         tail.read();
         return this;
     }
@@ -1486,6 +1487,9 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             readIfIsAutoRead();
         }
 
+        /**
+         * 如果配置为自动读，则执行channel.read()操作，目前发现就是注册 READ 事件 ( 并非是真实Read )，这样Channel才能读
+         */
         private void readIfIsAutoRead() {
             if (channel.config().isAutoRead()) {
                 channel.read();

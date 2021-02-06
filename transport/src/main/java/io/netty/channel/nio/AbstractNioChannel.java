@@ -15,6 +15,7 @@
  */
 package io.netty.channel.nio;
 
+import com.ly.nettydemo.util.LogUtilDemo;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.ByteBufUtil;
@@ -377,7 +378,18 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         boolean selected = false;
         for (;;) {
             try {
+
+                // 底层channel 注册到 Selector
+                //   1. attchment 设置为this，也就是当前netty的channel对象，在Selector获得事件时，或获取该attachment转为Channel对象
+                //   2. ops兴趣事件设置为0
                 selectionKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);
+                LogUtilDemo.log("doRegister: " +
+                        "javaChannel()=>"+javaChannel()+
+                        ",selector=>" + eventLoop().unwrappedSelector()+
+                        ",selectionKey=>" + selectionKey+
+                        ",eventLoop=>" + eventLoop()
+                        ,
+                        this);
                 return;
             } catch (CancelledKeyException e) {
                 if (!selected) {
@@ -409,8 +421,15 @@ public abstract class AbstractNioChannel extends AbstractChannel {
 
         readPending = true;
 
+        /*
+        * int read  = 1 << 0;  // 1
+        * int write = 1 << 2;  // 4
+        * int conn  = 1 << 3;  // 8
+        * int accpt = 1 << 4;  // 16
+        */
         final int interestOps = selectionKey.interestOps();
         if ((interestOps & readInterestOp) == 0) {
+            // 还没有注册OP_READ兴趣事件  则去注册
             selectionKey.interestOps(interestOps | readInterestOp);
         }
     }
