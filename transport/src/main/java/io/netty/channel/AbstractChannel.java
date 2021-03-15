@@ -463,6 +463,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+            // channel 设置 eventLoop
             AbstractChannel.this.eventLoop = eventLoop;
 
             if (eventLoop.inEventLoop()) {
@@ -828,6 +829,10 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                         // close() calls deregister() again - no need to fire channelUnregistered, so check
                         // if it was registered.
                         if (registered) {
+
+                            // 某些传输协议不允许调用”注销注册“行为。
+                            // 他们的"注销注册”行为会调用close()方法，然后close()又会重复调用"注销注册”行为，导致死循环调用
+                            // 因此判断一下 registered 状态  是否执行"注销注册”行为
                             registered = false;
                             pipeline.fireChannelUnregistered();
                         }

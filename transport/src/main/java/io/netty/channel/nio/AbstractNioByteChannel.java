@@ -98,7 +98,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
 
         private void closeOnRead(ChannelPipeline pipeline) {
             if (!isInputShutdown0()) {
-                if (isAllowHalfClosure(config())) {
+                if (isAllowHalfClosure(config())) { // 半关
                     shutdownInput();
                     pipeline.fireUserEventTriggered(ChannelInputShutdownEvent.INSTANCE);
                 } else {
@@ -136,21 +136,23 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                 return;
             }
             final ChannelPipeline pipeline = pipeline();
-            final ByteBufAllocator allocator = config.getAllocator();
-            final RecvByteBufAllocator.Handle allocHandle = recvBufAllocHandle();
+            final ByteBufAllocator allocator = config.getAllocator();  // PooledByteBufAllocator(directByDefault: true)
+            // 接收缓冲区的分配器
+            final RecvByteBufAllocator.Handle allocHandle = recvBufAllocHandle();  // AdaptiveRecvByteBufAllocator#HandleIMple
             allocHandle.reset(config);
 
             ByteBuf byteBuf = null;
             boolean close = false;
             try {
                 do {
-                    byteBuf = allocHandle.allocate(allocator);
-                    allocHandle.lastBytesRead(doReadBytes(byteBuf));
+                    byteBuf = allocHandle.allocate(allocator);  //PooledUnsafeDirectByteBuf(ridx: 0, widx: 0, cap: 1024)
+                    allocHandle.lastBytesRead(doReadBytes(byteBuf));  // 读取数据到buffer，并设置当前读取的字节数
                     if (allocHandle.lastBytesRead() <= 0) {
+                        // 当前没有读到数据
                         // nothing was read. release the buffer.
                         byteBuf.release();
                         byteBuf = null;
-                        close = allocHandle.lastBytesRead() < 0;
+                        close = allocHandle.lastBytesRead() < 0;  // 当前读取的字节数是-1  代表是对方请求关闭,收到了EOF
                         if (close) {
                             // There is nothing left to read as we received an EOF.
                             readPending = false;
@@ -160,7 +162,9 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
 
                     allocHandle.incMessagesRead(1);
                     readPending = false;
+
                     // 传播read事件
+                    // 可能会经过很多Decoder解码器
                     pipeline.fireChannelRead(byteBuf);
                     byteBuf = null;
                 } while (allocHandle.continueReading());

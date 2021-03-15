@@ -255,13 +255,16 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                     // Schedule connect timeout.
                     int connectTimeoutMillis = config().getConnectTimeoutMillis();
                     if (connectTimeoutMillis > 0) {
+                        // 连接超时的Future
                         connectTimeoutFuture = eventLoop().schedule(new Runnable() {
                             @Override
                             public void run() {
+                                // 超时Future到时间开始执行
                                 ChannelPromise connectPromise = AbstractNioChannel.this.connectPromise;
                                 ConnectTimeoutException cause =
                                         new ConnectTimeoutException("connection timed out: " + remoteAddress);
                                 if (connectPromise != null && connectPromise.tryFailure(cause)) {
+                                    // 如果成功设置了错误信息，代表本次连接确实没有连接上，则则关闭连接
                                     close(voidPromise());
                                 }
                             }
@@ -340,6 +343,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                 // Check for null as the connectTimeoutFuture is only created if a connectTimeoutMillis > 0 is used
                 // See https://github.com/netty/netty/issues/1770
                 if (connectTimeoutFuture != null) {
+                    // 连接成功后，将连接超时Future取消掉。
                     connectTimeoutFuture.cancel(false);
                 }
                 connectPromise = null;

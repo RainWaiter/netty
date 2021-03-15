@@ -133,6 +133,9 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         final Entry<ChannelOption<?>, Object>[] currentChildOptions = childOptions.entrySet().toArray(newOptionArray(0));
         final Entry<AttributeKey<?>, Object>[] currentChildAttrs    = childAttrs.entrySet().toArray(newAttrArray(0));
 
+        // 加入 ChannelInitializer 到 ChannelPipeline，
+        // 形成: HeadContext -> ChannelInitializer -> TailContext
+        // ChannelInitializer 是一个特殊的Handler 通常执行完initChannel()，就将自己从Pipeline中删除掉
         p.addLast(new ChannelInitializer<Channel>() {
             @Override
             public void initChannel(final Channel ch) {
@@ -142,6 +145,8 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
                     pipeline.addLast(handler);
                 }
 
+                // 异步加入一个 ServerBootstrapAcceptor 到 ChannelPipeline
+                // 形成: HeadContext -> ChannelInitializer -> ServerBootstrapAcceptor -> TailContext
                 ch.eventLoop().execute(new Runnable() {
                     @Override
                     public void run() {
@@ -199,6 +204,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         @SuppressWarnings("unchecked")
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
 
+            // ServerBootstrapAcceptor就是用来Accept连接的，所以msg肯定是一个Channel
             final Channel child = (Channel) msg;
             // 为 NioSocketChannel 加上 Channelhandler
             child.pipeline().addLast(childHandler);
@@ -211,6 +217,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
                 childGroup.register(child).addListener(new ChannelFutureListener() {
                     @Override
                     public void operationComplete(ChannelFuture future) throws Exception {
+                        // 注册失败 强制关闭
                         if (!future.isSuccess()) {
                             forceClose(child, future.cause());
                         }

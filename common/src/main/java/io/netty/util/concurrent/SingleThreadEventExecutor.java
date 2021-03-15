@@ -886,8 +886,10 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         }
 
         boolean inEventLoop = inEventLoop();
+        // 加入task到NioEventLoop中的任务队列
         addTask(task);
         if (!inEventLoop) {
+            // 当前Thread不是NioEventLoop线程，则启动NioEventLoop线程
             startThread();
             if (isShutdown()) {
                 boolean reject = false;
@@ -1042,6 +1044,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         executor.execute(new Runnable() {
             @Override
             public void run() {
+                // EventLoop 绑定线程thread
                 thread = Thread.currentThread();
                 if (interrupted) {
                     thread.interrupt();
@@ -1050,7 +1053,12 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                 boolean success = false;
                 updateLastExecutionTime();
                 try {
+                    // SingleThreadEventExecutor.this 就是当前 NioEventLoop对象
+                    // 也就是让NioEventLoop活起来
                     SingleThreadEventExecutor.this.run();
+
+                    // 针对NioEventLoop而言，因为他的run(）是一个死循环，只有NioEventLoop结束了，才会走到这里
+                    //
                     success = true;
                 } catch (Throwable t) {
                     logger.warn("Unexpected exception from an event executor: ", t);

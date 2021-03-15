@@ -302,11 +302,15 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     final ChannelFuture initAndRegister() {
+
+        // 创建channel
         Channel channel = null;
         try {
             // 创建Channel 服务端就是 NioServerSocketChannel
             // 创建Channel 客户端就是 NioSocketChannel
             channel = channelFactory.newChannel();
+
+            // 初始化channel
             init(channel);
         } catch (Throwable t) {
             if (channel != null) {
@@ -319,6 +323,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             return new DefaultChannelPromise(new FailedChannel(), GlobalEventExecutor.INSTANCE).setFailure(t);
         }
 
+        // 注册channel
         ChannelFuture regFuture = config().group().register(channel);
         if (regFuture.cause() != null) {
             if (channel.isRegistered()) {

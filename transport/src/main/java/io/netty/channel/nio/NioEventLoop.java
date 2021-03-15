@@ -387,27 +387,33 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
 
         try {
+            // 新的Selector
             newSelectorTuple = openSelector();
         } catch (Exception e) {
             logger.warn("Failed to create a new Selector.", e);
             return;
         }
 
+        // 重建步骤：
+        // 将旧Selector中的SelectionKey全部cancel
+        // 将Channel重新注册到新的Selector中（保持旧SelectKey的配置）
         // Register all channels to the new Selector.
         int nChannels = 0;
         for (SelectionKey key: oldSelector.keys()) {
             Object a = key.attachment();
             try {
                 if (!key.isValid() || key.channel().keyFor(newSelectorTuple.unwrappedSelector) != null) {
+                    // key是无效的 || 当前channel已经绑定到了新的Selector
                     continue;
                 }
 
                 int interestOps = key.interestOps();
                 key.cancel();
+                // channel注册到新的Selector
                 SelectionKey newKey = key.channel().register(newSelectorTuple.unwrappedSelector, interestOps, a);
                 if (a instanceof AbstractNioChannel) {
                     // Update SelectionKey
-                    ((AbstractNioChannel) a).selectionKey = newKey;
+                    ((AbstractNioChannel) a).selectionKey = newKey;  // channel设置新的key
                 }
                 nChannels ++;
             } catch (Exception e) {
@@ -528,9 +534,12 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             }
             // Always handle shutdown even if the loop processing threw an exception.
             try {
+                // NioEventLoop被关闭了
                 if (isShuttingDown()) {
+                    // 执行close
                     closeAll();
                     if (confirmShutdown()) {
+                        // 关闭完成，返回 相当于结束了NioEventLoop
                         return;
                     }
                 }
@@ -704,7 +713,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             // Also check for readOps of 0 to workaround possible JDK bug which may otherwise lead
             // to a spin loop
             if ((readyOps & (SelectionKey.OP_READ | SelectionKey.OP_ACCEPT)) != 0 || readyOps == 0) {
-                // read事件 || accept接收
+                // read事件 (NioByteUnsafe) || accept接收  ( NioMessageUnsafe )
                 unsafe.read();
             }
         } catch (CancelledKeyException ignored) {

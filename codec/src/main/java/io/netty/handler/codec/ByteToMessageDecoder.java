@@ -78,7 +78,10 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
     public static final Cumulator MERGE_CUMULATOR = new Cumulator() {
         @Override
         public ByteBuf cumulate(ByteBufAllocator alloc, ByteBuf cumulation, ByteBuf in) {
+
+            // 合并收集器（缓冲区复制到累积缓冲区）  --- 内存拷贝的方式
             try {
+
                 final ByteBuf buffer;
                 if (cumulation.writerIndex() > cumulation.maxCapacity() - in.readableBytes()
                     || cumulation.refCnt() > 1 || cumulation.isReadOnly()) {
@@ -111,6 +114,9 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
     public static final Cumulator COMPOSITE_CUMULATOR = new Cumulator() {
         @Override
         public ByteBuf cumulate(ByteBufAllocator alloc, ByteBuf cumulation, ByteBuf in) {
+
+            // 复合收集器  --- 索引方式
+
             ByteBuf buffer;
             try {
                 if (cumulation.refCnt() > 1) {
@@ -422,11 +428,16 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
      */
     protected void callDecode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) {
         try {
-            while (in.isReadable()) {
+            while (in.isReadable()) {// 有数据可读
+
                 int outSize = out.size();
 
                 if (outSize > 0) {
+
+                    // 读到数据了，传播出去
                     fireChannelRead(ctx, out, outSize);
+
+                    // 清理
                     out.clear();
 
                     // Check if this handler was removed before continuing with decoding.
@@ -441,6 +452,8 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
                 }
 
                 int oldInputLength = in.readableBytes();
+
+                // 解码数据, 如果解码成功，则将Bytebuf添加到out
                 decodeRemovalReentryProtection(ctx, in, out);
 
                 // Check if this handler was removed before continuing the loop.
@@ -452,14 +465,19 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
                 }
 
                 if (outSize == out.size()) {
+                    // out结果没有发生变化
                     if (oldInputLength == in.readableBytes()) {
+                        // 缓冲区在解码前和解码后是一样，代表当前没有解码到任何东西，退出去，
+                        // 原因是可能还没有接收到想要的数据（数据没有到达完整）， 放弃本次解码工作，继续接收数据再说
                         break;
                     } else {
+                        //
                         continue;
                     }
                 }
 
                 if (oldInputLength == in.readableBytes()) {
+                    // out结果发生了变化，但是缓冲区的数据却没有动，代表解码了数据但是缓冲区却没有减少
                     throw new DecoderException(
                             StringUtil.simpleClassName(getClass()) +
                                     ".decode() did not read anything but decoded a message.");
@@ -527,6 +545,10 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
         }
     }
 
+    /**
+     * 将旧的数据+扩展length 写入到新的收集器中
+     * 返回新的收集器、 释放旧的收集器
+     */
     static ByteBuf expandCumulation(ByteBufAllocator alloc, ByteBuf cumulation, int readable) {
         ByteBuf oldCumulation = cumulation;
         cumulation = alloc.buffer(oldCumulation.readableBytes() + readable);
